@@ -358,6 +358,14 @@
             }
         }
 
+        // --- NOTIFICATION HELPER ---
+        function sendSystemNotification(title, body) {
+            if (!("Notification" in window)) return;
+            if (Notification.permission === "granted") {
+                new Notification(title, { body: body, icon: 'https://img.icons8.com/color/48/christmas-star.png' });
+            }
+        }
+
         // --- VISUAL EFFECTS ---
         function createSnow() {
             const container = getEl('snow-container');
@@ -446,13 +454,16 @@
         }
 
         getEl('btn-login').addEventListener('click', async () => {
-            // UNLOCK AUDIO ON USER INTERACTION
+            // UNLOCK AUDIO & PERMISSION
             if (!audioUnlocked) {
                 notifSound.play().then(() => {
                     notifSound.pause();
                     notifSound.currentTime = 0;
                     audioUnlocked = true;
                 }).catch((e) => console.log("Audio unlock failed:", e));
+            }
+            if (Notification.permission !== "granted") {
+                Notification.requestPermission();
             }
 
             const u = getEl('login-username').value.trim();
@@ -550,7 +561,7 @@
                             <td style="padding:10px; border-bottom:1px solid #eee; text-align:center; font-family:monospace; color:#D62828;">${userData.password}</td>
                             <td style="padding:10px; border-bottom:1px solid #eee; text-align:right;">
                                 <button class="btn btn-sm" onclick="window.changePass('${d.id}')" title="Change Password"><i class="fas fa-key"></i></button>
-                                <button class="btn btn-sm btn-danger" onclick="window.deleteUser('${d.id}')" title="Delete User"><i class="fas fa-trash"></i></button>
+                                <button class="btn btn-sm btn-danger" onclick="window.deleteUser('${d.id}')" title="Delete User"><i class="fas fa-trash-alt"></i></button>
                             </td>
                         </tr>`;
                 });
@@ -698,6 +709,7 @@
                         const d = change.doc.data();
                         if (d.status === 'completed' && d.timestamp?.seconds * 1000 > loginTime) {
                             playNotification();
+                            sendSystemNotification("Task Update", "Your Child Completed a Task! 🔔");
                             showToast("Your Child Completed a Task! 🔔");
                         }
                     }
@@ -730,8 +742,16 @@
                 snap.docChanges().forEach(change => {
                     const d = change.doc.data();
                     if (d.timestamp?.seconds * 1000 > loginTime) {
-                        if (change.type === 'added') { playNotification(); showToast("New Christmas Challenge! 🔔"); }
-                        else if (change.type === 'modified' && d.status === 'approved') { playNotification(); showToast("Task Approved! 🌟"); fireConfetti(); }
+                        if (change.type === 'added') { 
+                            playNotification(); 
+                            sendSystemNotification("New Task", "You have a new Christmas Challenge! 🔔");
+                            showToast("New Christmas Challenge! 🔔"); 
+                        }
+                        else if (change.type === 'modified' && d.status === 'approved') { 
+                            playNotification(); 
+                            sendSystemNotification("Task Approved", "Your task has been approved! 🌟");
+                            showToast("Task Approved! 🌟"); fireConfetti(); 
+                        }
                     }
                 });
 
@@ -775,6 +795,7 @@
                         const d = change.doc.data();
                         if (d.sender !== sender && d.timestamp?.seconds * 1000 > loginTime) {
                             playNotification();
+                            sendSystemNotification("New Message", "You have a new secret message! 🎅");
                         }
                     }
                 });
