@@ -93,7 +93,6 @@
         .form-group { margin-bottom: 1.5rem; }
         label { display: block; margin-bottom: 0.5rem; font-weight: 700; color: var(--christmas-green); font-size: 0.95rem; }
         
-        /* Optimization: Font size 16px prevents iOS zoom on focus */
         input, select, textarea {
             width: 100%; padding: 14px 18px; border: 2px solid #e1e1e1; border-radius: 14px;
             font-family: 'Nunito', sans-serif; font-size: 16px; 
@@ -130,23 +129,21 @@
         /* Wheel optimized for responsiveness & IOS */
         .wheel-wrapper { 
             position: relative; width: 300px; height: 300px; max-width: 85vw; max-height: 85vw;
-            margin: 0 auto; padding: 0; /* Removing padding to let canvas fill */
+            margin: 0 auto; padding: 0;
             border-radius: 50%; 
             box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
-            /* White border around the wheel like the image */
             border: 5px solid rgba(255,255,255,0.8);
             background: transparent;
         }
         #wheelCanvas { width: 100%; height: 100%; border-radius: 50%; display: block; }
         
-        /* The Pointer overlay - purely visual triangle */
         .wheel-pointer { 
             position: absolute; top: -15px; left: 50%; transform: translateX(-50%); 
             z-index: 10; 
             width: 0; height: 0; 
             border-left: 15px solid transparent;
             border-right: 15px solid transparent;
-            border-top: 25px solid #333; /* Dark pointer like image */
+            border-top: 25px solid #333; 
             filter: drop-shadow(0 2px 2px rgba(0,0,0,0.3));
             pointer-events: none; 
         }
@@ -262,6 +259,7 @@
                     </div>
                     <button id="btn-spin" class="btn btn-gold mt-4" style="max-width: 250px;">🎡 SPIN TO PAIR</button>
                     <p id="spin-result" style="margin-top: 15px; font-weight: 800; color: var(--christmas-green); font-size: 1.1rem;"></p>
+                    <p style="font-size: 0.75rem; color: #D62828;">*Spinning will reset existing tasks!</p>
                 </div>
             </div>
             <div class="grid-2 mt-4">
@@ -399,7 +397,6 @@
         };
 
         // --- SOUND LOGIC ---
-        // Optimization: Preload audio to prevent lag on first play
         const notifSound = new Audio("https://assets.mixkit.co/active_storage/sfx/2996/2996-preview.mp3");
         notifSound.volume = 0.5;
         let audioUnlocked = false;
@@ -423,23 +420,10 @@
             }
         }
 
-        // --- CANVAS DPI HELPER ---
-        function setupHighDPICanvas(canvas) {
-            const dpr = window.devicePixelRatio || 1;
-            const rect = canvas.getBoundingClientRect();
-            // Optimization: Floor values to prevent sub-pixel rendering blur
-            canvas.width = Math.floor(rect.width * dpr);
-            canvas.height = Math.floor(rect.height * dpr);
-            const ctx = canvas.getContext('2d');
-            ctx.scale(dpr, dpr);
-            return ctx;
-        }
-
         // --- VISUAL EFFECTS ---
         function createSnow() {
             const container = getEl('snow-container');
-            container.innerHTML = ''; // Clear existing to prevent duplicates
-            // Optimization: Limit snowflakes based on device width
+            container.innerHTML = '';
             const isMobile = window.innerWidth < 768;
             const count = isMobile ? 25 : 50; 
             
@@ -462,14 +446,10 @@
         let confettiParticles = [];
         let animationId = null;
         
-        // Debounce resize to prevent performance hit
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                resizeCanvas();
-                createSnow(); // Re-calc snow for new width
-            }, 100);
+            resizeTimeout = setTimeout(() => { resizeCanvas(); createSnow(); }, 100);
         });
 
         function resizeCanvas() { 
@@ -481,7 +461,7 @@
         function fireConfetti() {
             resizeCanvas();
             confettiParticles = [];
-            const count = window.innerWidth < 768 ? 60 : 120; // Optimization: Fewer particles on mobile
+            const count = window.innerWidth < 768 ? 60 : 120;
             for (let i = 0; i < count; i++) {
                 confettiParticles.push({
                     x: canvas.width / 2, y: canvas.height / 2, w: Math.random() * 10 + 5, h: Math.random() * 10 + 5,
@@ -496,7 +476,7 @@
             const ctx = canvas.getContext('2d');
             if (confettiParticles.length === 0) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                animationId = null; // Optimization: Stop loop when empty
+                animationId = null;
                 return;
             }
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -512,7 +492,6 @@
         const sessionUser = sessionStorage.getItem('currentUser');
         if (sessionUser) handleLoginSuccess(JSON.parse(sessionUser));
 
-        // Global Config Listener
         if(unsubConfig) unsubConfig();
         unsubConfig = onSnapshot(doc(db, "config", "settings"), (docSnap) => {
             if (docSnap.exists()) {
@@ -557,7 +536,6 @@
         }
 
         getEl('btn-login').addEventListener('click', async () => {
-            // UNLOCK AUDIO & REQUEST NOTIFICATION PERMISSION (User Interaction Required)
             if (!audioUnlocked) {
                 notifSound.play().then(() => {
                     notifSound.pause();
@@ -708,7 +686,6 @@
                     userSnap.forEach((doc) => { if (doc.id !== 'ADMIN') batch.delete(doc.ref); });
                     const taskSnap = await getDocs(collection(db, "tasks"));
                     taskSnap.forEach((doc) => batch.delete(doc.ref));
-                    const chatSnap = await getDocs(collection(db, "chats")); // Clean up chats if possible, though strict subcollection deletion is hard in client SDK
                     await batch.commit();
                     await setDoc(doc(db, "game", "pairings"), { list: [] });
                     await updateDoc(doc(db, "config", "settings"), { revealed: false, registrationOpen: true });
@@ -733,31 +710,26 @@
             }
         };
 
-        // --- SPIN WHEEL FIXED & CHRISTMAS THEMED ---
+        // --- SPIN WHEEL LOGIC (UPDATED FOR RESPIN & CLEANUP) ---
         async function initSpinWheel() {
             const wheelCanvas = getEl('wheelCanvas');
             const wrapper = wheelCanvas.parentElement;
             let wCtx;
             let wheelUsers = [];
 
-            // Get users immediately
             const uSnap = await getDocs(collection(db, "users"));
             uSnap.forEach(d => {
                 if (d.data().username !== 'ADMIN' && d.data().role !== 'admin') wheelUsers.push(d.id);
             });
 
             function resizeWheel() {
-                // IMPORTANT FIX: Wait for element to be visible and have size
                 const width = wrapper.clientWidth;
                 const height = wrapper.clientHeight;
-                
                 if (width === 0 || height === 0) return;
 
                 const dpr = window.devicePixelRatio || 1;
                 wheelCanvas.width = width * dpr;
                 wheelCanvas.height = height * dpr;
-                
-                // CSS size must match context logic
                 wheelCanvas.style.width = `${width}px`;
                 wheelCanvas.style.height = `${height}px`;
 
@@ -767,13 +739,9 @@
                 if (wheelUsers.length > 0) drawWheel(wCtx, wheelUsers, 0, width);
             }
 
-            // IMPORTANT FIX: Use ResizeObserver to detect when the Admin Tab is shown (display:none -> block)
-            const observer = new ResizeObserver(() => {
-                resizeWheel();
-            });
+            const observer = new ResizeObserver(() => { resizeWheel(); });
             observer.observe(wrapper);
 
-            // Button Logic
             getEl('btn-spin').onclick = async () => {
                 wheelUsers = [];
                 const freshSnap = await getDocs(collection(db, "users"));
@@ -790,26 +758,51 @@
                     
                     const spinAngle = (Math.random() * 10 + 10) - ((Math.random() * 10 + 10) * spinTime) / spinTimeTotal;
                     rotateAngle += (spinAngle * Math.PI / 180);
-                    
-                    // Draw using current clientWidth to stay responsive
                     drawWheel(wCtx, wheelUsers, rotateAngle, wrapper.clientWidth);
                     requestAnimationFrame(animate);
                 };
 
                 const stopAnimation = async () => {
+                    // 1. Calculate New Pairings
                     let pairings = [];
                     for(let i=0; i<wheelUsers.length; i++) {
                         let mom = wheelUsers[i]; let child = wheelUsers[(i+1) % wheelUsers.length];
                         pairings.push({ mom, child });
                     }
-                    await setDoc(doc(db, "game", "pairings"), { list: pairings });
-                    fireConfetti(); showToast("Users Paired! ✨"); getEl('spin-result').innerText = `Paired ${wheelUsers.length} Elves!`;
+
+                    // 2. CLEANUP TASKS FOR FRESH GAME (User Requirement)
+                    showToast("Cleaning up old tasks... 🧹");
+                    try {
+                        const taskSnap = await getDocs(collection(db, "tasks"));
+                        const batch = writeBatch(db);
+                        
+                        let deleteCount = 0;
+                        taskSnap.forEach((doc) => {
+                            batch.delete(doc.ref);
+                            deleteCount++;
+                        });
+
+                        // Commit deletion and new pairings together
+                        await batch.commit(); 
+
+                        // 3. Set New Pairings
+                        await setDoc(doc(db, "game", "pairings"), { list: pairings });
+                        
+                        // 4. Ensure Identities are hidden again
+                        await updateDoc(doc(db, "config", "settings"), { revealed: false });
+
+                        fireConfetti(); 
+                        showToast("Game Reset & Pairs Assigned! ✨"); 
+                        getEl('spin-result').innerText = `Freshly Paired ${wheelUsers.length} Elves!`;
+                    } catch (e) {
+                        console.error("Error cleaning up:", e);
+                        showToast("Error resetting game data!");
+                    }
                 };
                 animate();
             };
         }
 
-        // UPDATED: Draw wheel with Christmas colors but Image Structure (Center Hub)
         function drawWheel(ctx, users, startAngle, size) {
             if(!ctx) return;
             const w = size, h = size; 
@@ -821,31 +814,22 @@
             if (users.length === 0) return;
             
             const arc = Math.PI * 2 / users.length; 
-            // Christmas Palette cycle
             const colors = ["#D62828", "#FFFFFF", "#2D6A4F", "#F4D35E"]; 
             
             users.forEach((user, i) => {
                 const angle = startAngle + i * arc;
                 ctx.fillStyle = colors[i % colors.length];
-                
                 ctx.beginPath();
                 ctx.moveTo(cx, cy);
                 ctx.arc(cx, cy, outsideRadius, angle, angle + arc, false);
                 ctx.lineTo(cx, cy);
                 ctx.fill();
-                
-                // Add border to segments
-                ctx.lineWidth = 1;
-                ctx.strokeStyle = "rgba(0,0,0,0.1)";
-                ctx.stroke();
+                ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,0.1)"; ctx.stroke();
 
                 ctx.save();
-                
-                // Text Styling
-                ctx.fillStyle = (i % colors.length === 1 || i % colors.length === 3) ? "#1B4332" : "#FFFFFF"; // Dark text on White/Gold
+                ctx.fillStyle = (i % colors.length === 1 || i % colors.length === 3) ? "#1B4332" : "#FFFFFF"; 
                 ctx.font = 'bold 14px Nunito';
-                ctx.shadowColor = "rgba(0,0,0,0.2)";
-                ctx.shadowBlur = 2;
+                ctx.shadowColor = "rgba(0,0,0,0.2)"; ctx.shadowBlur = 2;
 
                 ctx.translate(cx + Math.cos(angle + arc / 2) * textRadius, cy + Math.sin(angle + arc / 2) * textRadius);
                 ctx.rotate(angle + arc / 2 + Math.PI / 2);
@@ -855,21 +839,15 @@
                 ctx.restore();
             });
 
-            // Draw Central Hub (Black Circle like image)
             ctx.beginPath();
             ctx.arc(cx, cy, 30, 0, 2 * Math.PI, false);
-            ctx.fillStyle = "#111"; // Almost black
+            ctx.fillStyle = "#111"; 
             ctx.fill();
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = "#fff";
-            ctx.stroke();
+            ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.stroke();
 
-            // Draw "Spin" Text in Hub
             ctx.save();
-            ctx.fillStyle = "#FFF";
-            ctx.font = 'bold 16px Nunito';
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
+            ctx.fillStyle = "#FFF"; ctx.font = 'bold 16px Nunito';
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
             ctx.fillText("Spin", cx, cy);
             ctx.restore();
         }
@@ -900,9 +878,9 @@
 
         // --- TASKS ---
         function initTasks(me, childName) {
-            // MOM VIEW
             const btnSend = getEl('btn-send-task');
             if(unsubTasksMom) unsubTasksMom();
+            // Important: This query automatically updates when tasks are deleted by admin spin
             unsubTasksMom = onSnapshot(query(collection(db, "tasks"), where("fromMom", "==", me)), (snap) => {
                 const list = getEl('mom-review-list'); list.innerHTML = "";
                 let countToday = 0, total = 0; const todayStr = new Date().toDateString();
@@ -936,7 +914,6 @@
                 getEl('task-input').value = ""; showToast("Challenge Sent! 📨");
             };
 
-            // CHILD VIEW
             if(unsubTasksChild) unsubTasksChild();
             unsubTasksChild = onSnapshot(query(collection(db, "tasks"), where("toChild", "==", me)), (snap) => {
                 const history = getEl('child-task-history'); const currentText = getEl('current-task-text');
