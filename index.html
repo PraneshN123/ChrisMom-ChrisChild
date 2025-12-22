@@ -159,20 +159,42 @@
             display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; 
             -webkit-overflow-scrolling: touch;
         }
-        .message { max-width: 85%; padding: 12px 16px; border-radius: 18px; font-size: 0.95rem; line-height: 1.4; position: relative; animation: popIn 0.3s ease; word-wrap: break-word; }
+        /* Message Styling & Link Handling */
+        .message { 
+            max-width: 85%; padding: 12px 16px; border-radius: 18px; 
+            font-size: 0.95rem; line-height: 1.4; position: relative; 
+            animation: popIn 0.3s ease; 
+            /* Fix for exceeding chat */
+            word-wrap: break-word; 
+            word-break: break-word; 
+            white-space: pre-wrap;
+        }
+        .message a { color: inherit; text-decoration: underline; font-weight: bold; }
+        
         @keyframes popIn { from{transform: scale(0.8); opacity:0;} to{transform: scale(1); opacity:1;} }
         
         .msg-sent { align-self: flex-end; background: var(--christmas-green); color: white; border-bottom-right-radius: 4px; }
         .msg-received { align-self: flex-start; background: white; color: var(--text-main); border-bottom-left-radius: 4px; }
         .msg-meta { font-size: 0.65rem; opacity: 0.7; margin-top: 4px; text-align: right; font-weight: 700; }
         
-        /* New Delete Button Style */
-        .msg-delete-btn { 
-            display: inline-block; margin-left: 8px; cursor: pointer; opacity: 0.6; 
-            font-size: 0.85rem; color: #fff; vertical-align: middle; 
-            padding: 2px 6px; border-radius: 4px; transition: opacity 0.2s;
+        /* Chat Action Buttons */
+        .msg-actions { display: inline-flex; gap: 5px; margin-left: 8px; vertical-align: middle; }
+        .msg-btn { 
+            cursor: pointer; opacity: 0.6; font-size: 0.8rem; color: #fff; 
+            padding: 2px 4px; border-radius: 4px; transition: opacity 0.2s; 
         }
-        .msg-delete-btn:hover { opacity: 1; background: rgba(255,0,0,0.2); }
+        .msg-btn:hover { opacity: 1; background: rgba(255,255,255,0.2); }
+
+        /* Mobile Responsive Task Item */
+        .task-item {
+            border-bottom: 1px solid #f0f0f0; padding: 12px 0;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 10px;
+        }
+        .task-content { flex: 1; min-width: 0; }
+        .task-text { font-weight: 700; color: #333; margin-bottom: 4px; word-break: break-word; }
+        .task-actions { flex-shrink: 0; display: flex; gap: 5px; align-items: center; }
+        .task-action-btn { font-size: 0.75rem; padding: 6px 12px; width: auto; border-radius: 12px; white-space: nowrap; }
 
         #confetti-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1000; }
         .hidden { display: none !important; }
@@ -643,6 +665,14 @@
             setTimeout(() => { t.className = t.className.replace("show", ""); }, 3000);
         }
 
+        // --- HELPER: LINKIFY ---
+        function linkify(text) {
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            return text.replace(urlRegex, function(url) {
+                return `<a href="${url}" target="_blank">${url}</a>`;
+            });
+        }
+
         // --- ADMIN ---
         function initAdminPanel() {
             getEl('btn-admin-change-pass').onclick = async () => {
@@ -718,7 +748,7 @@
             }
         };
 
-        // --- SPIN WHEEL LOGIC (UPDATED FOR RESPIN & CLEANUP) ---
+        // --- SPIN WHEEL LOGIC ---
         async function initSpinWheel() {
             const wheelCanvas = getEl('wheelCanvas');
             const wrapper = wheelCanvas.parentElement;
@@ -771,32 +801,20 @@
                 };
 
                 const stopAnimation = async () => {
-                    // 1. Calculate New Pairings
                     let pairings = [];
                     for(let i=0; i<wheelUsers.length; i++) {
                         let mom = wheelUsers[i]; let child = wheelUsers[(i+1) % wheelUsers.length];
                         pairings.push({ mom, child });
                     }
 
-                    // 2. CLEANUP TASKS FOR FRESH GAME (User Requirement)
                     showToast("Cleaning up old tasks... 🧹");
                     try {
                         const taskSnap = await getDocs(collection(db, "tasks"));
                         const batch = writeBatch(db);
-                        
-                        let deleteCount = 0;
-                        taskSnap.forEach((doc) => {
-                            batch.delete(doc.ref);
-                            deleteCount++;
-                        });
-
-                        // Commit deletion and new pairings together
+                        taskSnap.forEach((doc) => { batch.delete(doc.ref); });
                         await batch.commit(); 
 
-                        // 3. Set New Pairings
                         await setDoc(doc(db, "game", "pairings"), { list: pairings });
-                        
-                        // 4. Ensure Identities are hidden again
                         await updateDoc(doc(db, "config", "settings"), { revealed: false });
 
                         fireConfetti(); 
@@ -888,7 +906,7 @@
         function initTasks(me, childName) {
             const btnSend = getEl('btn-send-task');
             if(unsubTasksMom) unsubTasksMom();
-            // Important: This query automatically updates when tasks are deleted by admin spin
+            
             unsubTasksMom = onSnapshot(query(collection(db, "tasks"), where("fromMom", "==", me)), (snap) => {
                 const list = getEl('mom-review-list'); list.innerHTML = "";
                 let countToday = 0, total = 0; const todayStr = new Date().toDateString();
@@ -907,10 +925,25 @@
                 snap.forEach(d => {
                     const t = d.data(); total++;
                     if(t.timestamp && new Date(t.timestamp.seconds*1000).toDateString() === todayStr) countToday++;
+                    
                     let actionHtml = '';
-                    if (t.status === 'completed') { actionHtml = `<button class="btn btn-secondary" style="font-size:0.7rem; padding:5px 10px; width:auto; border-radius:12px;" onclick="window.approveTask('${d.id}')">Approve</button>`; }
-                    list.innerHTML += `<div style="border-bottom:1px solid #f0f0f0; padding:10px 0; display:flex; justify-content:space-between; align-items:center;"><div><div style="font-weight:700; color:#333;">${t.text}</div><span class="status-badge status-${t.status}"><i class="fas fa-circle" style="font-size:6px;"></i> ${t.status}</span></div>${actionHtml}</div>`;
+                    if (t.status === 'completed') { 
+                        actionHtml = `<button class="btn btn-secondary task-action-btn" onclick="window.approveTask('${d.id}')">Approve</button>`; 
+                    } else if (t.status === 'pending') {
+                        // Added Edit button for pending tasks
+                        actionHtml = `<button class="btn btn-sm task-action-btn" onclick="window.editTask('${d.id}', '${t.text.replace(/'/g, "\\'")}')"><i class="fas fa-pencil-alt"></i></button>`;
+                    }
+
+                    list.innerHTML += `
+                        <div class="task-item">
+                            <div class="task-content">
+                                <div class="task-text">${t.text}</div>
+                                <span class="status-badge status-${t.status}"><i class="fas fa-circle" style="font-size:6px;"></i> ${t.status}</span>
+                            </div>
+                            <div class="task-actions">${actionHtml}</div>
+                        </div>`;
                 });
+
                 if (countToday >= 1 || total >= 5) { btnSend.disabled = true; btnSend.style.background = "#ccc"; btnSend.style.boxShadow = "none"; btnSend.innerText = total >= 5 ? "All 5 Tasks Sent!" : "Daily Limit (1/1) Reached"; } 
                 else { btnSend.disabled = false; btnSend.style.background = ""; btnSend.innerText = "Send Challenge"; }
             });
@@ -967,6 +1000,14 @@
         }
 
         window.approveTask = async (id) => { await updateDoc(doc(db, "tasks", id), { status: 'approved' }); fireConfetti(); showToast("Task Approved! ✅"); };
+        
+        window.editTask = async (id, oldText) => {
+            const newText = prompt("Edit your task:", oldText);
+            if(newText && newText !== oldText) {
+                try { await updateDoc(doc(db, "tasks", id), { text: newText }); showToast("Task Updated! 📝"); }
+                catch(e) { showToast("Error updating task."); }
+            }
+        };
 
         // --- CHATS ---
         function initChats(me, momName, childName) {
@@ -974,7 +1015,7 @@
             setupChatWindow(`${momName}_${me}`, 'chat-box-mom', 'msg-input-mom', 'btn-send-mom', me, 'mom');
         }
 
-        // Global function for message deletion (called from HTML string)
+        // Global functions for message deletion and editing
         window.deleteMessage = async (docId, msgId) => {
             if(confirm("Delete this message?")) {
                 try {
@@ -983,6 +1024,19 @@
                 } catch(e) {
                     console.error(e);
                     showToast("Error deleting message.");
+                }
+            }
+        };
+
+        window.editMessage = async (docId, msgId, oldText) => {
+            const newText = prompt("Edit your message:", oldText);
+            if(newText && newText !== oldText) {
+                try {
+                    await updateDoc(doc(db, "chats", docId, "messages", msgId), { text: newText });
+                    showToast("Message Updated! ✨");
+                } catch(e) {
+                    console.error(e);
+                    showToast("Error editing message.");
                 }
             }
         };
@@ -1002,7 +1056,6 @@
 
                 box.innerHTML = "";
                 const msgs = [];
-                // Push ID along with data so we can delete later
                 snap.forEach(d => msgs.push({ id: d.id, ...d.data() }));
                 msgs.sort((a,b) => a.timestamp - b.timestamp);
                 
@@ -1010,13 +1063,22 @@
                     const div = document.createElement('div');
                     div.className = `message ${m.sender === sender ? 'msg-sent' : 'msg-received'}`;
                     
-                    // Add delete button only for sender
-                    let deleteBtn = '';
+                    // Add delete AND edit button only for sender
+                    let actionBtns = '';
                     if(m.sender === sender) {
-                        deleteBtn = `<span class="msg-delete-btn" onclick="window.deleteMessage('${docId}', '${m.id}')"><i class="fas fa-trash"></i></span>`;
+                        // Escape single quotes for the prompt
+                        const safeText = m.text.replace(/'/g, "\\'");
+                        actionBtns = `
+                            <span class="msg-actions">
+                                <span class="msg-btn" onclick="window.editMessage('${docId}', '${m.id}', '${safeText}')"><i class="fas fa-pencil-alt"></i></span>
+                                <span class="msg-btn" onclick="window.deleteMessage('${docId}', '${m.id}')"><i class="fas fa-trash"></i></span>
+                            </span>`;
                     }
 
-                    div.innerHTML = `${m.text} ${deleteBtn}<div class="msg-meta">${m.timestamp ? new Date(m.timestamp.seconds*1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '...'}</div>`;
+                    // Process links
+                    const processedText = linkify(m.text);
+
+                    div.innerHTML = `${processedText} ${actionBtns}<div class="msg-meta">${m.timestamp ? new Date(m.timestamp.seconds*1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '...'}</div>`;
                     box.appendChild(div);
                 });
                 box.scrollTop = box.scrollHeight;
